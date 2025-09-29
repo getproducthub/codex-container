@@ -295,6 +295,7 @@ docker_run() {
   if [[ -n "$WORKSPACE_PATH" ]]; then
     args+=(-v "${WORKSPACE_PATH}:/workspace" -w /workspace)
   fi
+  args+=(-v "${CODEX_ROOT}/scripts:/opt/codex-support:ro")
   args+=("${TAG}")
   args+=("$@")
   docker "${args[@]}"
@@ -365,7 +366,7 @@ ensure_codex_auth() {
 
 invoke_codex_login() {
   ensure_codex_cli 0 0
-  local login_script_path="/workspace/scripts/codex_login.sh"
+  local login_script_path="/opt/codex-support/codex_login.sh"
   if [[ ! -f "${CODEX_ROOT}/scripts/codex_login.sh" ]]; then
     echo "Error: login helper script missing at ${CODEX_ROOT}/scripts/codex_login.sh" >&2
     exit 1

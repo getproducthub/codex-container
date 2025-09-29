@@ -56,6 +56,9 @@ RUN npm install -g @openai/codex@${CODEX_CLI_VERSION} \
   && rm -rf /usr/local/share/npm-global/lib/node_modules/codex-cli/tests \
   && rm -rf /usr/local/share/npm-global/lib/node_modules/codex-cli/docs
 
+# Keep npm on the latest patch level for node 24
+RUN npm install -g npm@11.6.1
+
 # Inside the container we consider the environment already sufficiently locked
 # down, therefore instruct Codex CLI to allow running without sandboxing.
 ENV CODEX_UNSAFE_ALLOW_NO_SANDBOX=1
