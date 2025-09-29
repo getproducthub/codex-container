@@ -57,6 +57,7 @@ Both scripts expand `~`, accept absolute paths, and create the directory if it d
   - `-Tag <image>` and `-Push` let you build or push under a custom image name.
   - `-SkipUpdate` skips the npm refresh (useful when you know the CLI is up to date).
   - `-NoAutoLogin` disables the implicit login check; Codex must already be authenticated.
+  - `-Oss` tells Codex to target a locally hosted provider via `--oss` (e.g., Ollama). When set, the container exposes `OLLAMA_HOST=http://host.docker.internal:11434` automatically.
   - `-CodexArgs <value>` and `-Exec` both accept multiple values (repeat the flag or pass positionals after `--`) to forward raw arguments to the CLI.
 
 ## macOS / Linux / WSL (Bash)
@@ -70,6 +71,7 @@ Both scripts expand `~`, accept absolute paths, and create the directory if it d
   - `--workspace <path>` mounts an alternate directory as `/workspace`.
   - `--tag <image>` / `--push` match the Docker image controls in the PowerShell script.
   - `--skip-update` skips the npm refresh; `--no-auto-login` avoids implicit login attempts.
+  - `--oss` forwards the `--oss` flag and injects `OLLAMA_HOST=http://host.docker.internal:11434`, so Codex can talk to a local Ollama instance.
   - `--codex-arg <value>` and `--exec-arg <value>` forward additional parameters to Codex (repeat the flag as needed).
 
 Typical example:
@@ -97,3 +99,5 @@ To wipe Codex state quickly:
 - **`permission denied` talking to Docker** – ensure your user is in the `docker` group and restart the shell; verify `docker ps` works before rerunning the scripts.
 - **Codex keeps asking for login** – run `-Login`/`--login` to refresh credentials. The persisted files live under the configured Codex home (not the repo).
 - **Reset everything** – delete the Codex home folder you configured (e.g. `%USERPROFILE%\.codex-service`) and reinstall/login.
+
+# codex-container

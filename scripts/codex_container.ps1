@@ -13,7 +13,8 @@ param(
     [switch]$SkipUpdate,
     [switch]$NoAutoLogin,
     [switch]$Json,
-    [switch]$JsonE
+    [switch]$JsonE,
+    [switch]$Oss
 )
 
 $ErrorActionPreference = 'Stop'
@@ -206,7 +207,12 @@ function New-DockerRunArgs {
         $Context
     )
 
-    $args = @($Context.RunArgs + $Context.Tag)
+    $args = @()
+    $args += $Context.RunArgs
+    if ($Oss) {
+        $args += @('-e', 'OLLAMA_HOST=http://host.docker.internal:11434')
+    }
+    $args += $Context.Tag
     return $args
 }
 
@@ -296,8 +302,29 @@ function Invoke-CodexRun {
     Ensure-CodexCli -Context $Context -Silent:$Silent
 
     $cmd = @('codex')
+    $finalArgs = @()
+    if ($Oss -and -not ($Arguments -contains '--oss')) {
+        $finalArgs += '--oss'
+    }
+    if ($Oss) {
+        $hasOssServer = $false
+        if ($Arguments) {
+            foreach ($arg in $Arguments) {
+                if ($arg -match 'oss_server_url') {
+                    $hasOssServer = $true
+                    break
+                }
+            }
+        }
+        if (-not $hasOssServer) {
+            $finalArgs += @('-c', 'oss_server_url="http://host.docker.internal:11434"')
+        }
+    }
     if ($Arguments) {
-        $cmd += $Arguments
+        $finalArgs += $Arguments
+    }
+    if ($finalArgs) {
+        $cmd += $finalArgs
     }
 
     Invoke-CodexContainer -Context $Context -CommandArgs $cmd
@@ -327,6 +354,24 @@ function Invoke-CodexExec {
         $injectedFlags += '--experimental-json'
     } elseif ($Json -and -not ($cmdArguments -contains '--json')) {
         $injectedFlags += '--json'
+    }
+
+    if ($Oss -and -not ($cmdArguments -contains '--oss')) {
+        $injectedFlags += '--oss'
+    }
+
+    if ($Oss) {
+        $hasServerConfig = $false
+        foreach ($arg in $cmdArguments) {
+            if ($arg -match 'oss_server_url') {
+                $hasServerConfig = $true
+                break
+            }
+        }
+        if (-not $hasServerConfig) {
+            $injectedFlags += '-c'
+            $injectedFlags += 'oss_server_url="http://host.docker.internal:11434"'
+        }
     }
 
     if ($injectedFlags.Count -gt 0) {

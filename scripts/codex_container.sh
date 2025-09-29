@@ -9,6 +9,7 @@ NO_AUTO_LOGIN=false
 PUSH_IMAGE=false
 JSON_MODE="none"
 CODEX_HOME_OVERRIDE=""
+USE_OSS=false
 declare -a CODEX_ARGS=()
 declare -a EXEC_ARGS=()
 declare -a POSITIONAL_ARGS=()
@@ -126,6 +127,10 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       JSON_MODE="experimental"
+      shift
+      ;;
+    --oss)
+      USE_OSS=true
       shift
       ;;
     --)
@@ -296,6 +301,9 @@ docker_run() {
     args+=(-v "${WORKSPACE_PATH}:/workspace" -w /workspace)
   fi
   args+=(-v "${CODEX_ROOT}/scripts:/opt/codex-support:ro")
+  if [[ "$USE_OSS" == true ]]; then
+    args+=(-e OLLAMA_HOST=http://host.docker.internal:11434)
+  fi
   args+=("${TAG}")
   args+=("$@")
   docker "${args[@]}"
@@ -378,8 +386,30 @@ invoke_codex_run() {
   local silent=${1:-0}
   ensure_codex_cli 0 "$silent"
   local -a cmd=(codex)
+  local -a args=()
+  if [[ "$USE_OSS" == true ]]; then
+    local has_oss=0
+    local has_server=0
+    for arg in "${CODEX_ARGS[@]}"; do
+      if [[ "$arg" == "--oss" ]]; then
+        has_oss=1
+      fi
+      if [[ "$arg" == *"oss_server_url"* ]]; then
+        has_server=1
+      fi
+    done
+    if [[ $has_oss -eq 0 ]]; then
+      args+=("--oss")
+    fi
+    if [[ $has_server -eq 0 ]]; then
+      args+=(-c "oss_server_url=\"http://host.docker.internal:11434\"")
+    fi
+  fi
   if [[ ${#CODEX_ARGS[@]} -gt 0 ]]; then
-    cmd+=("${CODEX_ARGS[@]}")
+    args+=("${CODEX_ARGS[@]}")
+  fi
+  if [[ ${#args[@]} -gt 0 ]]; then
+    cmd+=("${args[@]}")
   fi
   if [[ $silent -eq 1 ]]; then
     docker_run --quiet "${cmd[@]}"
@@ -406,6 +436,8 @@ invoke_codex_exec() {
   local has_skip=0
   local has_json=0
   local has_json_exp=0
+  local has_oss=0
+  local has_server=0
   for arg in "${exec_args[@]}"; do
     if [[ "$arg" == "--skip-git-repo-check" ]]; then
       has_skip=1
@@ -413,6 +445,10 @@ invoke_codex_exec() {
       has_json=1
     elif [[ "$arg" == "--experimental-json" ]]; then
       has_json_exp=1
+    elif [[ "$arg" == "--oss" ]]; then
+      has_oss=1
+    elif [[ "$arg" == *"oss_server_url"* ]]; then
+      has_server=1
     fi
   done
   if [[ $has_skip -eq 0 ]]; then
@@ -422,6 +458,12 @@ invoke_codex_exec() {
     injected+=("--experimental-json")
   elif [[ "$JSON_MODE" == "legacy" && $has_json -eq 0 ]]; then
     injected+=("--json")
+  fi
+  if [[ "$USE_OSS" == true && $has_oss -eq 0 ]]; then
+    injected+=("--oss")
+  fi
+  if [[ "$USE_OSS" == true && $has_server -eq 0 ]]; then
+    injected+=(-c "oss_server_url=\"http://host.docker.internal:11434\"")
   fi
 
   if [[ ${#injected[@]} -gt 0 ]]; then
