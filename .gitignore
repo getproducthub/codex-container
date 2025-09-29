@@ -1,0 +1,9 @@
+# Legacy Codex runtime artifacts (pre user-scoped home)
+codex-home/
+
+# Node package caches or build outputs (if present in workspace)
+node_modules/
+*.log
+
+# Docker build outputs
+*.tgz
