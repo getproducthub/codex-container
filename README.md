@@ -27,6 +27,7 @@ Both scripts expand `~`, accept absolute paths, and create the directory if it d
   ./scripts/codex_container.ps1 -Install
   ```
   Builds the `gnosis/codex-service:dev` image and refreshes the bundled Codex CLI.
+  The script always mounts the workspace you specify with `-Workspace` (or, by default, the directory you were in when you invoked the command) so Codex sees the same files regardless of the action.
 
 - **Authenticate Codex** *(normally triggered automatically)*
   ```powershell
@@ -50,6 +51,14 @@ Both scripts expand `~`, accept absolute paths, and create the directory if it d
   ./scripts/codex_container.ps1 -Exec "hello" -CodexHome "C:\\Users\\kordl\\.codex-service-test"
   ```
 
+- **Other useful switches**
+  - `-Shell` opens an interactive `/bin/bash` session inside the container.
+  - `-Workspace <path>` mounts a different project directory at `/workspace`.
+  - `-Tag <image>` and `-Push` let you build or push under a custom image name.
+  - `-SkipUpdate` skips the npm refresh (useful when you know the CLI is up to date).
+  - `-NoAutoLogin` disables the implicit login check; Codex must already be authenticated.
+  - `-CodexArgs <value>` and `-Exec` both accept multiple values (repeat the flag or pass positionals after `--`) to forward raw arguments to the CLI.
+
 ## macOS / Linux / WSL (Bash)
 
 `scripts/codex_container.sh` provides matching functionality:
@@ -57,12 +66,18 @@ Both scripts expand `~`, accept absolute paths, and create the directory if it d
 - Primary actions: `--install`, `--login`, `--run` (default), `--exec`, `--shell`
 - JSON output switches: `--json`, `--json-e` (alias `--json-experimental`)
 - Override Codex home: `--codex-home /path/to/state`
+- Other useful flags:
+  - `--workspace <path>` mounts an alternate directory as `/workspace`.
+  - `--tag <image>` / `--push` match the Docker image controls in the PowerShell script.
+  - `--skip-update` skips the npm refresh; `--no-auto-login` avoids implicit login attempts.
+  - `--codex-arg <value>` and `--exec-arg <value>` forward additional parameters to Codex (repeat the flag as needed).
 
 Typical example:
 
 ```bash
 ./scripts/codex_container.sh --exec --json-e "hello"
 ```
+The directory passed via `--workspace`—or, if omitted, the directory you were in when you invoked the script—is what gets mounted into `/workspace` for *all* actions (install, login, run, etc.).
 
 ## Cleanup Helpers
 
