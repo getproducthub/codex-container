@@ -57,7 +57,8 @@ Both scripts expand `~`, accept absolute paths, and create the directory if it d
   - `-Tag <image>` and `-Push` let you build or push under a custom image name.
   - `-SkipUpdate` skips the npm refresh (useful when you know the CLI is up to date).
   - `-NoAutoLogin` disables the implicit login check; Codex must already be authenticated.
-  - `-Oss` tells Codex to target a locally hosted provider via `--oss` (e.g., Ollama). When set, the container exposes `OLLAMA_HOST=http://host.docker.internal:11434` automatically.
+  - `-Oss` tells Codex to target a locally hosted provider via `--oss` (e.g., Ollama). When set, the container injects `OLLAMA_HOST`/`OSS_SERVER_URL` (bridged to the host via `codex_entry.sh`) and passes `-c oss_server_url=http://host.docker.internal:11434` to Codex.
+  - `-OssModel (maps to Codex `-m/--model`) <name>` selects the model Codex should request when using `--oss` (automatically implies `-Oss`).
   - `-CodexArgs <value>` and `-Exec` both accept multiple values (repeat the flag or pass positionals after `--`) to forward raw arguments to the CLI.
 
 ## macOS / Linux / WSL (Bash)
@@ -71,7 +72,8 @@ Both scripts expand `~`, accept absolute paths, and create the directory if it d
   - `--workspace <path>` mounts an alternate directory as `/workspace`.
   - `--tag <image>` / `--push` match the Docker image controls in the PowerShell script.
   - `--skip-update` skips the npm refresh; `--no-auto-login` avoids implicit login attempts.
-  - `--oss` forwards the `--oss` flag and injects `OLLAMA_HOST=http://host.docker.internal:11434`, so Codex can talk to a local Ollama instance.
+  - `--oss` forwards the `--oss` flag, injects `OLLAMA_HOST`/`OSS_SERVER_URL`, and passes `-c oss_server_url=http://host.docker.internal:11434`, so Codex can talk to a local Ollama instance.
+  - `--model <name>` (maps to Codex `-m/--model`) mirrors `-OssModel (maps to Codex `-m/--model`)` on PowerShell (it also implies `--oss`).
   - `--codex-arg <value>` and `--exec-arg <value>` forward additional parameters to Codex (repeat the flag as needed).
 
 Typical example:
@@ -93,11 +95,10 @@ To wipe Codex state quickly:
 - Docker Desktop / Docker Engine accessible from your shell. On Windows + WSL, enable Docker Desktop’s WSL integration **and** add your user to the `docker` group (`sudo usermod -aG docker $USER`).
 - No local Node.js install is required; the CLI lives inside the container.
 - Building the image (or running the update step) requires internet access to fetch `@openai/codex` from npm. You can pin a version at build time via `--build-arg CODEX_CLI_VERSION=0.42.0` if desired.
+- When using `--oss/-Oss`, ensure your host-side Ollama server is reachable from Docker (e.g., start it with `OLLAMA_HOST=0.0.0.0 ollama serve`).
 
 ## Troubleshooting
 
 - **`permission denied` talking to Docker** – ensure your user is in the `docker` group and restart the shell; verify `docker ps` works before rerunning the scripts.
 - **Codex keeps asking for login** – run `-Login`/`--login` to refresh credentials. The persisted files live under the configured Codex home (not the repo).
 - **Reset everything** – delete the Codex home folder you configured (e.g. `%USERPROFILE%\.codex-service`) and reinstall/login.
-
-# codex-container

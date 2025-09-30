@@ -14,10 +14,15 @@ param(
     [switch]$NoAutoLogin,
     [switch]$Json,
     [switch]$JsonE,
-    [switch]$Oss
+    [switch]$Oss,
+    [string]$OssModel
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($OssModel) {
+    $Oss = $true
+}
 
 function Resolve-WorkspacePath {
     param(
@@ -114,6 +119,7 @@ function New-CodexContext {
         '--rm',
         '-it',
         '-p', '1455:1455',
+        '--add-host', 'host.docker.internal:host-gateway',
         '-v', ("${codexHome}:/opt/codex-home"),
         '-e', 'HOME=/opt/codex-home',
         '-e', 'XDG_CONFIG_HOME=/opt/codex-home'
@@ -210,9 +216,14 @@ function New-DockerRunArgs {
     $args = @()
     $args += $Context.RunArgs
     if ($Oss) {
-        $args += @('-e', 'OLLAMA_HOST=http://host.docker.internal:11434')
+        $args += @(
+            '-e', 'OLLAMA_HOST=http://host.docker.internal:11434',
+            '-e', 'OSS_SERVER_URL=http://host.docker.internal:11434',
+            '-e', 'ENABLE_OSS_BRIDGE=1'
+        )
     }
     $args += $Context.Tag
+    $args += '/usr/local/bin/codex_entry.sh'
     return $args
 }
 
@@ -302,29 +313,26 @@ function Invoke-CodexRun {
     Ensure-CodexCli -Context $Context -Silent:$Silent
 
     $cmd = @('codex')
-    $finalArgs = @()
     if ($Oss -and -not ($Arguments -contains '--oss')) {
-        $finalArgs += '--oss'
+        $cmd += '--oss'
     }
-    if ($Oss) {
-        $hasOssServer = $false
+    if ($OssModel) {
+        $hasOssModel = $false
         if ($Arguments) {
-            foreach ($arg in $Arguments) {
-                if ($arg -match 'oss_server_url') {
-                    $hasOssServer = $true
+            for ($i = 0; $i -lt $Arguments.Count; $i++) {
+                $arg = $Arguments[$i]
+                if ($arg -eq '--model' -or $arg -like '--model=*') {
+                    $hasOssModel = $true
                     break
                 }
             }
         }
-        if (-not $hasOssServer) {
-            $finalArgs += @('-c', 'oss_server_url="http://host.docker.internal:11434"')
+        if (-not $hasOssModel) {
+            $cmd += @('--model', $OssModel)
         }
     }
     if ($Arguments) {
-        $finalArgs += $Arguments
-    }
-    if ($finalArgs) {
-        $cmd += $finalArgs
+        $cmd += $Arguments
     }
 
     Invoke-CodexContainer -Context $Context -CommandArgs $cmd
@@ -360,17 +368,18 @@ function Invoke-CodexExec {
         $injectedFlags += '--oss'
     }
 
-    if ($Oss) {
-        $hasServerConfig = $false
-        foreach ($arg in $cmdArguments) {
-            if ($arg -match 'oss_server_url') {
-                $hasServerConfig = $true
+    if ($OssModel) {
+        $hasOssModel = $false
+        for ($i = 0; $i -lt $cmdArguments.Length; $i++) {
+            $arg = $cmdArguments[$i]
+            if ($arg -eq '--model' -or $arg -like '--model=*') {
+                $hasOssModel = $true
                 break
             }
         }
-        if (-not $hasServerConfig) {
-            $injectedFlags += '-c'
-            $injectedFlags += 'oss_server_url="http://host.docker.internal:11434"'
+        if (-not $hasOssModel) {
+            $injectedFlags += '--model'
+            $injectedFlags += $OssModel
         }
     }
 

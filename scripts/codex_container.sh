@@ -10,6 +10,7 @@ PUSH_IMAGE=false
 JSON_MODE="none"
 CODEX_HOME_OVERRIDE=""
 USE_OSS=false
+OSS_MODEL=""
 declare -a CODEX_ARGS=()
 declare -a EXEC_ARGS=()
 declare -a POSITIONAL_ARGS=()
@@ -131,6 +132,16 @@ while [[ $# -gt 0 ]]; do
       ;;
     --oss)
       USE_OSS=true
+      shift
+      ;;
+    --model)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Error: --model requires a value" >&2
+        exit 1
+      fi
+      USE_OSS=true
+      OSS_MODEL="$1"
       shift
       ;;
     --)
@@ -296,15 +307,15 @@ docker_run() {
   else
     args+=(-it)
   fi
-  args+=(-p 1455:1455 -v "${CODEX_HOME}:/opt/codex-home" -e HOME=/opt/codex-home -e XDG_CONFIG_HOME=/opt/codex-home)
+  args+=(-p 1455:1455 --add-host host.docker.internal:host-gateway -v "${CODEX_HOME}:/opt/codex-home" -e HOME=/opt/codex-home -e XDG_CONFIG_HOME=/opt/codex-home)
   if [[ -n "$WORKSPACE_PATH" ]]; then
     args+=(-v "${WORKSPACE_PATH}:/workspace" -w /workspace)
   fi
   args+=(-v "${CODEX_ROOT}/scripts:/opt/codex-support:ro")
   if [[ "$USE_OSS" == true ]]; then
-    args+=(-e OLLAMA_HOST=http://host.docker.internal:11434)
+    args+=(-e OLLAMA_HOST=http://host.docker.internal:11434 -e OSS_SERVER_URL=http://host.docker.internal:11434 -e ENABLE_OSS_BRIDGE=1)
   fi
-  args+=("${TAG}")
+  args+=("${TAG}" /usr/local/bin/codex_entry.sh)
   args+=("$@")
   docker "${args[@]}"
 }
@@ -389,20 +400,20 @@ invoke_codex_run() {
   local -a args=()
   if [[ "$USE_OSS" == true ]]; then
     local has_oss=0
-    local has_server=0
+    local has_model=0
     for arg in "${CODEX_ARGS[@]}"; do
       if [[ "$arg" == "--oss" ]]; then
         has_oss=1
       fi
-      if [[ "$arg" == *"oss_server_url"* ]]; then
-        has_server=1
-      fi
+      case "$arg" in
+        --model|--model=*) has_model=1 ;;
+      esac
     done
     if [[ $has_oss -eq 0 ]]; then
       args+=("--oss")
     fi
-    if [[ $has_server -eq 0 ]]; then
-      args+=(-c "oss_server_url=\"http://host.docker.internal:11434\"")
+    if [[ -n "$OSS_MODEL" && $has_model -eq 0 ]]; then
+      args+=("--model" "$OSS_MODEL")
     fi
   fi
   if [[ ${#CODEX_ARGS[@]} -gt 0 ]]; then
@@ -438,6 +449,7 @@ invoke_codex_exec() {
   local has_json_exp=0
   local has_oss=0
   local has_server=0
+  local has_model=0
   for arg in "${exec_args[@]}"; do
     if [[ "$arg" == "--skip-git-repo-check" ]]; then
       has_skip=1
@@ -449,6 +461,8 @@ invoke_codex_exec() {
       has_oss=1
     elif [[ "$arg" == *"oss_server_url"* ]]; then
       has_server=1
+    elif [[ "$arg" == "--model" || "$arg" == --model=* ]]; then
+      has_model=1
     fi
   done
   if [[ $has_skip -eq 0 ]]; then
@@ -463,7 +477,10 @@ invoke_codex_exec() {
     injected+=("--oss")
   fi
   if [[ "$USE_OSS" == true && $has_server -eq 0 ]]; then
-    injected+=(-c "oss_server_url=\"http://host.docker.internal:11434\"")
+    injected+=(-c "oss_server_url=http://host.docker.internal:11434")
+  fi
+  if [[ "$USE_OSS" == true && -n "$OSS_MODEL" && $has_model -eq 0 ]]; then
+    injected+=("--model" "$OSS_MODEL")
   fi
 
   if [[ ${#injected[@]} -gt 0 ]]; then

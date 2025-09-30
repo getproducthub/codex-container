@@ -68,5 +68,9 @@ USER root
 COPY scripts/init_firewall.sh /usr/local/bin/
 RUN chmod 555 /usr/local/bin/init_firewall.sh
 
+# Install Codex entrypoint helper
+COPY scripts/codex_entry.sh /usr/local/bin/
+RUN chmod 555 /usr/local/bin/codex_entry.sh
+
 # Drop back to non-root.
 USER node
