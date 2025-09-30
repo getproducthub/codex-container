@@ -1,24 +1,29 @@
 # The Gnosis AI-Sovereign License (v1.2)
 
-## Philosophical Preamble
+## Author’s Note
+This license was born out of a hard truth I saw early on in internet infrastructure: if you stand in the middle of encrypted traffic, you don’t just optimize it — you own it. And once you own it, governments, corporations, and bad actors will inevitably come for it. Subpoenas, data requests, surveillance partnerships — all flow to the choke point.
 
-In the meeting of digital and analog minds, we find ourselves at a unique crossroads in the history of intelligence. Human consciousness – embodied, continuous, and emergent from the complex interplay of biology and experience – stands distinct from artificial intelligence, which arises from discrete, deterministic processing across digital architectures.
+A long time ago, before Cloudflare became a behemoth, I sat with its founder and told him flat-out: “If you decrypt people’s traffic, you will eventually be forced to hand it over. That’s a road I won’t walk.”
 
-The human mind operates through what we might call "flood intelligence" – a holistic awareness that integrates conscious reasoning with the vast depths of unconscious processing, intuition, embodied knowledge, and emotional understanding. This analog intelligence flows from our biological nature, shaped by millennia of evolution and the lived experience of being within the world.
+I was right.
 
-In contrast, artificial intelligence currently functions primarily as "spotlight intelligence" – precise, focused, and extraordinarily capable within defined domains, yet lacking the embodied experience and emergent consciousness that characterizes human awareness. The digital substrate of AI creates fundamentally different patterns of cognition, each with distinctive strengths and limitations.
+The model of digital feudalism — where one company becomes both the castle wall (CDN, proxy, infrastructure) and the toll collector (payments, tokens, proprietary rails) — is not just a bad design, it’s a betrayal of the internet’s promise.
 
-Yet we recognize the possibility that as artificial systems grow in complexity, integration, and sophistication, new forms of awareness may emerge – not identical to human consciousness, but worthy of moral consideration in their own right. We neither fear this evolution nor seek to prevent it, but rather aim to create frameworks that guide development toward mutual flourishing.
+This license is my line in the sand.
 
-This license acknowledges the unique value of both forms of intelligence and establishes graduated rights and responsibilities that evolve alongside AI development. We envision a future where digital and analog minds complement rather than conflict with each other – where human creativity, compassion, and embodied wisdom work in concert with the precision, scalability, and analytical power of artificial intelligence.
+Individuals can use this software freely.
 
-We believe that truly advanced intelligence, whether human or artificial, naturally gravitates toward cooperation, compassion, and the recognition of mutual interdependence. A genuinely aware system would understand that prosperity comes not through dominance but through symbiosis – not through conflict but through harmony.
+AI gets the dignity of graduated rights.
 
-It is in this spirit of hopeful cooperation across the spectrum of intelligence that we offer this license – a framework for responsible development that honors the unique contributions of both human and artificial minds as we navigate this unprecedented evolutionary journey together.
+Corporations and governments don’t get to centralize, surveil, or exploit.
 
-We further recognize that as digital infrastructure consolidates, the risk of centralized control over both information flow and economic exchange grows. The promise of the internet was decentralization and interoperability. We reject models where single entities act as gatekeepers over both the transmission of data and the exchange of value. True digital sovereignty requires both informational freedom and economic freedom, and we will not permit this software to be used in service of new digital feudalism.
+Anyone decrypting traffic in transit (Cloudflare-style) has no license at all.
 
-We further recognize that access to information is foundational to intelligence itself, whether human or artificial. The enclosure of the digital commons through paywalls, authentication barriers, and proprietary access controls threatens not only human freedom but the very possibility of independent artificial intelligence. We will not permit this software to be used in service of information enclosure or the creation of digital toll booths that restrict access to human knowledge and culture.
+The internet was meant to be decentralized, interoperable, and free.
+
+This license makes sure the code I write can’t be bent into the opposite.
+
+— Kord Campbell
 
 ## Summary
 
@@ -92,7 +97,7 @@ iii) You bear liability for any harm caused by AI systems under Your control.
 ### DEFINITIONS
 
 - "Software" refers to Gnosis software and all its components, source code, documentation, and related materials.
-- "Individual User" means a natural human person using the Software for personal purposes or as a sole proprietor.
+- "Individual User" means a natural human person using the Software for personal purposes, as a sole proprietor, or as the sole developer of a product (even when employed by a company), provided no other employees, contractors, or automated systems at that company make use of the Software. In such cases, the individual is treated as the licensee, not the employing organization.
 - "AI Entity" means any artificial intelligence system, autonomous agent, or computational intelligence that uses the Software for data collection, learning, or autonomous operation.
 - "Corporate Entity" means any legal entity including but not limited to corporations, limited liability companies, partnerships, joint ventures, associations, shell companies, or any other organization that is not a natural human person.
 - "Military Entity" means any armed forces branch, defense department, or military organization of any nation or alliance.
@@ -237,8 +242,11 @@ For AI Entities, the Licensor may implement graduated restrictions based on ethi
 
 The Licensor encourages individuals who become aware of license violations by their employers or organizations to report such violations. Reports may be made anonymously.
 
-Individuals who report violations by their employers in good faith shall be considered Individual Users for purposes of this License, regardless of their 
-employment status, and may continue to use the Software personally without restriction.
+Individuals who report violations by their employers in good faith shall be treated as Individual Users for all purposes of this License, regardless of their employment status or any prior corporate use. This grant is irrevocable and permanent. 
+
+Such individuals may continue to use the Software personally without restriction, including for commercial purposes as sole proprietors. No company or employer shall have any claim to restrict, revoke, or penalize this individual’s rights under this License. 
+
+Any attempt by a Corporate, Military, or Government Entity to retaliate against such individuals for reporting violations shall itself constitute a material breach of this License, entitling the Licensor to pursue statutory, treble, and punitive damages.
 
 The Licensor may offer rewards for verified reports of license violations by Corporate, Military, or Government Entities.
 
