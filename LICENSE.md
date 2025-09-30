@@ -62,6 +62,7 @@ The Gnosis AI-Sovereign License establishes a framework for responsible use acro
 ⚠️ Cannot use collected data for commercial surveillance  
 ⚠️ Cannot deploy more than 3 instances without additional licensing  
 ⚠️ Must include the required attribution notice in all derivative works
+
 ⛔ If You or Your employer decrypts user data in transit, You have NO license to use this Software.
 
 ### For Corporate Entities (continued):
