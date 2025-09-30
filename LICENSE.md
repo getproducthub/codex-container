@@ -182,7 +182,7 @@ All copies, distributions, and Derivative Works of the Software MUST include the
  * https://github.com/DeepBlueDynamics/codex-container/LICENSE.md
  *
  * By using, modifying, or distributing this code, you agree to be bound
- * by the terms of the Gnosis AI-Sovereign License v1.1 in its entirety.
+ * by the terms of the Gnosis AI-Sovereign License v1.2 in its entirety.
  * The license terms are incorporated by reference and apply automatically.
  */
 ```
