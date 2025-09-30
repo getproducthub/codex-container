@@ -68,9 +68,10 @@ The Gnosis AI-Sovereign License establishes a framework for responsible use acro
 ### For Corporate Entities (continued):
 
 l) If You deploy or operate AI systems that use this Software:
-   i) You are responsible for ensuring compliance with Section 2.2 (AI Entities);
-   ii) You must implement oversight mechanisms for autonomous AI use;
-   iii) You bear liability for any harm caused by AI systems under Your control.
+
+i) You are responsible for ensuring compliance with Section 2.2 (AI Entities);
+ii) You must implement oversight mechanisms for autonomous AI use;
+iii) You bear liability for any harm caused by AI systems under Your control.
 
 ### For Military and Government Entities:
 
@@ -177,7 +178,7 @@ All copies, distributions, and Derivative Works of the Software MUST include the
 /*
  * This software contains components derived from Gnosis software
  * Original work copyright (c) 2025 Kord Campbell, DeepBlue Dynamics
- * Licensed under the Gnosis AI-Sovereign License v1.1
+ * Licensed under the Gnosis AI-Sovereign License v1.2
  * https://github.com/DeepBlueDynamics/codex-container/LICENSE.md
  *
  * By using, modifying, or distributing this code, you agree to be bound
