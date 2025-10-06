@@ -296,10 +296,22 @@ fi
 
 docker_run() {
   local quiet=0
-  if [[ "$1" == "--quiet" ]]; then
-    quiet=1
-    shift
-  fi
+  local expose_login_port=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --quiet)
+        quiet=1
+        shift
+        ;;
+      --expose-login-port)
+        expose_login_port=1
+        shift
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
 
   local -a args=(run --rm)
   if [[ $quiet -eq 1 ]]; then
@@ -307,9 +319,16 @@ docker_run() {
   else
     args+=(-it)
   fi
-  args+=(-p 1455:1455 --add-host host.docker.internal:host-gateway -v "${CODEX_HOME}:/opt/codex-home" -e HOME=/opt/codex-home -e XDG_CONFIG_HOME=/opt/codex-home)
+  if [[ $expose_login_port -eq 1 ]]; then
+    args+=(-p 1455:1455)
+  fi
+  args+=(--user 0:0 --add-host host.docker.internal:host-gateway -v "${CODEX_HOME}:/opt/codex-home" -e HOME=/opt/codex-home -e XDG_CONFIG_HOME=/opt/codex-home)
   if [[ -n "$WORKSPACE_PATH" ]]; then
-    args+=(-v "${WORKSPACE_PATH}:/workspace" -w /workspace)
+    local mount_source="${WORKSPACE_PATH//\\//}"
+    if [[ "$mount_source" =~ ^[A-Za-z]:$ ]]; then
+      mount_source+="/"
+    fi
+    args+=(-v "${mount_source}:/workspace" -w /workspace)
   fi
   args+=(-v "${CODEX_ROOT}/scripts:/opt/codex-support:ro")
   if [[ "$USE_OSS" == true ]]; then
@@ -317,6 +336,11 @@ docker_run() {
   fi
   args+=("${TAG}" /usr/local/bin/codex_entry.sh)
   args+=("$@")
+  if [[ -n "${CODEX_CONTAINER_TRACE:-}" ]]; then
+    printf 'docker'
+    printf ' %q' "${args[@]}"
+    printf '\n'
+  fi
   docker "${args[@]}"
 }
 
@@ -390,7 +414,7 @@ invoke_codex_login() {
     echo "Error: login helper script missing at ${CODEX_ROOT}/scripts/codex_login.sh" >&2
     exit 1
   fi
-  docker_run /bin/bash "$login_script_path"
+  docker_run --expose-login-port /bin/bash "$login_script_path"
 }
 
 invoke_codex_run() {

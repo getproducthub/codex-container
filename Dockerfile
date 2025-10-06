@@ -41,14 +41,10 @@ RUN apt-get update \
 RUN mkdir -p /usr/local/share/npm-global \
   && chown -R node:node /usr/local/share
 
-# Set up non-root user
-USER node
-
-# Install global packages
+# Set up npm global install directory for root and install Codex
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV PATH="${PATH}:/usr/local/share/npm-global/bin"
 
-# Install codex
 ARG CODEX_CLI_VERSION=0.42.0
 RUN npm install -g @openai/codex@${CODEX_CLI_VERSION} \
   && npm cache clean --force \
@@ -66,11 +62,18 @@ ENV CODEX_UNSAFE_ALLOW_NO_SANDBOX=1
 # Copy and set up firewall script as root.
 USER root
 COPY scripts/init_firewall.sh /usr/local/bin/
-RUN chmod 555 /usr/local/bin/init_firewall.sh
+RUN sed -i 's/\r$//' /usr/local/bin/init_firewall.sh \
+  && chmod 555 /usr/local/bin/init_firewall.sh
 
 # Install Codex entrypoint helper
 COPY scripts/codex_entry.sh /usr/local/bin/
-RUN chmod 555 /usr/local/bin/codex_entry.sh
+RUN sed -i 's/\r$//' /usr/local/bin/codex_entry.sh \
+  && chmod 555 /usr/local/bin/codex_entry.sh
 
-# Drop back to non-root.
-USER node
+# Copy login script and convert line endings
+COPY scripts/codex_login.sh /usr/local/bin/
+RUN sed -i 's/\r$//' /usr/local/bin/codex_login.sh \
+  && chmod 555 /usr/local/bin/codex_login.sh
+
+# Default to running as root so bind mounts succeed on Windows drives with restrictive ACLs.
+USER root

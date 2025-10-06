@@ -118,7 +118,7 @@ function New-CodexContext {
         'run',
         '--rm',
         '-it',
-        '-p', '1455:1455',
+        '--user', '0:0',
         '--add-host', 'host.docker.internal:host-gateway',
         '-v', ("${codexHome}:/opt/codex-home"),
         '-e', 'HOME=/opt/codex-home',
@@ -126,7 +126,13 @@ function New-CodexContext {
     )
 
     if ($workspacePath) {
-        $runArgs += @('-v', ("${workspacePath}:/workspace"), '-w', '/workspace')
+        # Docker's --mount parser on Windows prefers forward slashes. Convert drive roots like I:\\ to I:/.
+        $normalized = $workspacePath.Replace('\\', '/')
+        # Ensure drive letters have trailing slash (handles both I: and I:/ cases)
+        if ($normalized -match '^[A-Za-z]:/?$') {
+            $normalized = $normalized.TrimEnd('/') + '/'
+        }
+        $runArgs += @('-v', ("${normalized}:/workspace"), '-w', '/workspace')
     }
 
     return [PSCustomObject]@{
@@ -210,11 +216,15 @@ function Ensure-DockerImage {
 
 function New-DockerRunArgs {
     param(
-        $Context
+        $Context,
+        [switch]$ExposeLoginPort
     )
 
     $args = @()
     $args += $Context.RunArgs
+    if ($ExposeLoginPort) {
+        $args += @('-p', '1455:1455')
+    }
     if ($Oss) {
         $args += @(
             '-e', 'OLLAMA_HOST=http://host.docker.internal:11434',
@@ -230,12 +240,17 @@ function New-DockerRunArgs {
 function Invoke-CodexContainer {
     param(
         $Context,
-        [string[]]$CommandArgs
+        [string[]]$CommandArgs,
+        [switch]$ExposeLoginPort
     )
 
-    $runArgs = New-DockerRunArgs -Context $Context
+    $runArgs = New-DockerRunArgs -Context $Context -ExposeLoginPort:$ExposeLoginPort
     if ($CommandArgs) {
         $runArgs += $CommandArgs
+    }
+
+    if ($env:CODEX_CONTAINER_TRACE) {
+        Write-Host "docker $($runArgs -join ' ')" -ForegroundColor DarkGray
     }
 
     docker @runArgs
@@ -266,24 +281,12 @@ function Ensure-CodexCli {
         return
     }
 
-$updateScript = @'
-set -euo pipefail
-export PATH="$PATH:/usr/local/share/npm-global/bin"
-echo "Ensuring Codex CLI is up to date..."
-if npm install -g @openai/codex@latest --prefer-online >/tmp/codex-install.log 2>&1; then
-  echo "Codex CLI updated."
-else
-  echo "Failed to install Codex CLI; see /tmp/codex-install.log."
-  cat /tmp/codex-install.log
-  exit 1
-fi
-cat /tmp/codex-install.log
-'@
+$updateScript = "set -euo pipefail; export PATH=`"`$PATH:/usr/local/share/npm-global/bin`"; echo `"Ensuring Codex CLI is up to date...`"; if npm install -g @openai/codex@latest --prefer-online >/tmp/codex-install.log 2>&1; then echo `"Codex CLI updated.`"; else echo `"Failed to install Codex CLI; see /tmp/codex-install.log.`"; cat /tmp/codex-install.log; exit 1; fi; cat /tmp/codex-install.log"
 
     if ($Silent) {
-        Invoke-CodexContainer -Context $Context -CommandArgs @('/bin/bash', '-lc', $updateScript) | Out-Null
+        Invoke-CodexContainer -Context $Context -CommandArgs @('/bin/bash', '-c', $updateScript) | Out-Null
     } else {
-        Invoke-CodexContainer -Context $Context -CommandArgs @('/bin/bash', '-lc', $updateScript)
+        Invoke-CodexContainer -Context $Context -CommandArgs @('/bin/bash', '-c', $updateScript)
     }
     $script:CodexUpdateCompleted = $true
 }
@@ -300,7 +303,7 @@ function Invoke-CodexLogin {
         throw "Expected login helper script missing at $loginHostPath."
     }
 
-    Invoke-CodexContainer -Context $Context -CommandArgs @('/bin/bash', '/workspace/scripts/codex_login.sh')
+    Invoke-CodexContainer -Context $Context -CommandArgs @('/bin/bash', '-c', 'sed -i "s/\r$//" /workspace/scripts/codex_login.sh && /bin/bash /workspace/scripts/codex_login.sh') -ExposeLoginPort
 }
 
 function Invoke-CodexRun {

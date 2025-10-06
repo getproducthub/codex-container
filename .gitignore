@@ -7,3 +7,7 @@ node_modules/
 
 # Docker build outputs
 *.tgz
+
+# Version snapshot directories/files
+*_versions/
+*_versions
