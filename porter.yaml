@@ -1,0 +1,29 @@
+app:
+  name: codex-cli
+  platform: kubernetes
+
+services:
+  codex-task:
+    type: job
+    build:
+      dockerfile: ./Dockerfile
+      context: .
+    # For a prebuilt image, delete the build block and add:
+    # image: ghcr.io/<org>/<app>/codex-cli-env:latest
+    command:
+      - /usr/local/bin/codex_entry.sh
+    args:
+      - codex
+      - <subcommand>
+      - --flag=value
+    env:
+      - name: TZ
+        value: UTC
+      - name: CODEX_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: codex-api
+            key: token
+    resources:
+      cpu: 500m
+      memory: 512Mi
