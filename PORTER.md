@@ -6,6 +6,7 @@ This guide shows how to run the Codex CLI container as a one-off job with [Porte
 - Repository access that includes this `Dockerfile` and scripts.
 - A Porter project with permissions to build from that repo and access any required secrets.
 - Optional (needed for Option B or local testing): Docker installed locally and a container registry you can push to (examples use GitHub Container Registry at `ghcr.io`).
+- Optional (needed when triggering jobs from another service): a Porter API token scoped to run jobs in your project.
 
 ## 1. Build the container image
 You have two ways to provide the Codex CLI image Porter should run:
@@ -115,6 +116,26 @@ porter cron create codex-report \
 ```
 
 This example runs the job at 13:00 UTC every weekday.
+
+### Trigger jobs from another service
+Your web app (or any backend worker) can start the same Porter job via HTTPS; the container itself does not expose a web server.
+
+1. Create a Porter API token in the dashboard (`Settings → API Tokens`) with access to the project that owns `codex-task`. Store it as a secret (for example `PORTER_API_TOKEN`).
+2. Capture the project ID (visible in the project URL or via `porter projects list`). The job name is the service key from `porter.yaml` (`codex-task`).
+3. Issue a `POST` request when you need to run Codex:
+
+   ```bash
+   curl -X POST \
+     -H "Authorization: Bearer $PORTER_API_TOKEN" \
+     -H "Content-Type: application/json" \
+     https://dashboard.getporter.dev/api/projects/<project-id>/jobs/codex-task/run \
+     -d '{}'
+   ```
+
+   - Pass a JSON body if you want to override args or inject ad-hoc env vars for that run.
+4. The response includes a run ID. Poll status with `GET .../runs/<run-id>` or fetch logs with `GET .../runs/<run-id>/logs` and surface the output back to your users.
+
+If you prefer shelling out, your service can run `porter jobs run codex-task` directly, but the REST API avoids bundling the CLI.
 
 ## 4. Updating the command or image
 - Edit `args` (or add `command`) in `porter.yaml` to change what Codex executes.
