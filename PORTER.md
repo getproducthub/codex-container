@@ -3,11 +3,33 @@
 This guide shows how to run the Codex CLI container as a one-off job with [Porter](https://www.porter.run). The container does not expose any ports; it just executes commands against your source tree and exits.
 
 ## Prerequisites
-- Docker installed locally and access to the repo containing the `Dockerfile`.
-- A container registry you can push to (examples use GitHub Container Registry at `ghcr.io`).
-- A Porter project already set up with access to that registry and any secrets the Codex CLI needs.
+- Repository access that includes this `Dockerfile` and scripts.
+- A Porter project with permissions to build from that repo and access any required secrets.
+- Optional (needed for Option B or local testing): Docker installed locally and a container registry you can push to (examples use GitHub Container Registry at `ghcr.io`).
 
-## 1. Build and publish the image
+## 1. Build the container image
+You have two ways to provide the Codex CLI image Porter should run:
+
+### Option A: Let Porter build from this repo
+If the Porter project is connected to this repository, add a `build` block to the service. Porter will build the `Dockerfile` in-place before each run and push it to the project’s managed registry automatically.
+
+```yaml
+services:
+  codex-task:
+    type: job
+    build:
+      dockerfile: ./Dockerfile
+      context: .
+    command:
+      - /usr/local/bin/codex_entry.sh
+    args:
+      - codex
+      - summarize
+```
+
+Keep the command and args aligned with the task you want Codex to perform. Porter injects the freshly built image into the job without requiring a manual push.
+
+### Option B: Build and publish yourself
 From the repository root:
 
 ```bash
@@ -22,7 +44,7 @@ docker push ghcr.io/<org>/<app>/codex-cli-env:latest
 - If you want to pin the Codex CLI version, add `--build-arg CODEX_CLI_VERSION=0.42.0` to the `docker build` command.
 
 ## 2. Create `porter.yaml`
-Add a manifest at the root of the repo Porter will deploy:
+Add a manifest at the root of the repo Porter will deploy. The example below assumes Porter builds the image (Option A). If you prefer to supply a prebuilt image (Option B), remove the `build` block and set `image:` instead.
 
 ```yaml
 app:
@@ -32,7 +54,11 @@ app:
 services:
   codex-task:
     type: job
-    image: ghcr.io/<org>/<app>/codex-cli-env:latest
+    build:
+      dockerfile: ./Dockerfile
+      context: .
+    # For a prebuilt image, delete the build block and add:
+    # image: ghcr.io/<org>/<app>/codex-cli-env:latest
     command:
       - /usr/local/bin/codex_entry.sh
     args:
@@ -92,8 +118,8 @@ This example runs the job at 13:00 UTC every weekday.
 
 ## 4. Updating the command or image
 - Edit `args` (or add `command`) in `porter.yaml` to change what Codex executes.
-- Rebuild and push the image after modifying the container contents: `docker build ... && docker push ...`.
-- Trigger a new Porter job to pick up the changes.
+- If Porter manages the build (Option A), commit the changes and rerun the job; Porter will rebuild automatically.
+- If you supply a prebuilt image (Option B), rebuild and push with `docker build ... && docker push ...`, then rerun the job.
 
 ## 5. Troubleshooting
 - **Job fails immediately**: check `porter jobs logs codex-task` for Codex CLI errors (authentication, arguments, etc.).
