@@ -55,7 +55,7 @@ services:
 Key points:
 - `type: job` tells Porter to create a Kubernetes Job that runs to completion (no Service, no port).
 - `command` defaults to the entrypoint helper; update `args` with the Codex CLI invocation you need (for example `codex summarize --json-e`).
-- Inject credentials via `env`. In Porter, define the `codex-api` secret in the dashboard or CLI before running the job.
+- Inject credentials via `env`. In Porter, define the `codex-api` secret in the dashboard or CLI before running the job. The container entrypoint automatically maps `OPENAI_API_KEY`, `OPENAI_TOKEN`, or `openai_token` to `CODEX_API_KEY`, so existing `.env` files that already expose one of those names continue to work.
 - Adjust the resource requests to match your workload.
 
 If the Codex CLI needs repository files, make sure the repo connected to Porter contains them, or mount additional data using Porter volumes:

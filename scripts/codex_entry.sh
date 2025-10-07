@@ -30,8 +30,34 @@ start_oss_bridge() {
   trap cleanup EXIT
 }
 
+ensure_codex_api_key() {
+  # Prefer explicit Codex variable if already exported.
+  if [[ -n "${CODEX_API_KEY:-}" ]]; then
+    return
+  fi
+
+  # Fall back to the standard OpenAI variable names.
+  if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+    export CODEX_API_KEY="${OPENAI_API_KEY}"
+    return
+  fi
+
+  # Support legacy env files that expose lowercase or alternative names.
+  if [[ -n "${OPENAI_TOKEN:-}" ]]; then
+    export CODEX_API_KEY="${OPENAI_TOKEN}"
+    return
+  fi
+
+  if [[ -n "${openai_token:-}" ]]; then
+    export CODEX_API_KEY="${openai_token}"
+    return
+  fi
+}
+
 if [[ "${ENABLE_OSS_BRIDGE:-}" == "1" ]]; then
   start_oss_bridge
 fi
+
+ensure_codex_api_key
 
 exec "$@"
