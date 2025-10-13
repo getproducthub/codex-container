@@ -31,6 +31,9 @@ RUN apt-get update \
     less \
     man-db \
     procps \
+    python3 \
+    python3-pip \
+    python3-venv \
     socat \
     unzip \
     ripgrep \
@@ -51,6 +54,14 @@ RUN npm install -g @openai/codex@${CODEX_CLI_VERSION} \
   && rm -rf /usr/local/share/npm-global/lib/node_modules/codex-cli/node_modules/.cache \
   && rm -rf /usr/local/share/npm-global/lib/node_modules/codex-cli/tests \
   && rm -rf /usr/local/share/npm-global/lib/node_modules/codex-cli/docs
+
+# Install MCP server dependencies inside a virtual environment to avoid PEP-668 issues
+ENV MCP_VENV=/opt/mcp-venv
+RUN python3 -m venv "$MCP_VENV" \
+  && "$MCP_VENV/bin/pip" install --no-cache-dir --upgrade pip \
+  && "$MCP_VENV/bin/pip" install --no-cache-dir aiohttp fastmcp tomlkit
+ENV PATH="$MCP_VENV/bin:$PATH"
+ENV VIRTUAL_ENV="$MCP_VENV"
 
 # Keep npm on the latest patch level for node 24
 RUN npm install -g npm@11.6.1
@@ -74,6 +85,11 @@ RUN sed -i 's/\r$//' /usr/local/bin/codex_entry.sh \
 COPY scripts/codex_login.sh /usr/local/bin/
 RUN sed -i 's/\r$//' /usr/local/bin/codex_login.sh \
   && chmod 555 /usr/local/bin/codex_login.sh
+
+# Copy Codex gateway HTTP service
+COPY scripts/codex_gateway.js /usr/local/bin/
+RUN sed -i 's/\r$//' /usr/local/bin/codex_gateway.js \
+  && chmod 555 /usr/local/bin/codex_gateway.js
 
 # Default to running as root so bind mounts succeed on Windows drives with restrictive ACLs.
 USER root

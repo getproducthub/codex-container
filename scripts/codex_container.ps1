@@ -3,6 +3,7 @@ param(
     [switch]$Install,
     [switch]$Login,
     [switch]$Run,
+    [switch]$Serve,
     [string[]]$Exec,
     [switch]$Shell,
     [switch]$Push,
@@ -15,7 +16,12 @@ param(
     [switch]$Json,
     [switch]$JsonE,
     [switch]$Oss,
-    [string]$OssModel
+    [string]$OssModel,
+    [int]$GatewayPort,
+    [string]$GatewayHost,
+    [int]$GatewayTimeoutMs,
+    [string]$GatewayDefaultModel,
+    [string[]]$GatewayExtraArgs
 )
 
 $ErrorActionPreference = 'Stop'
@@ -217,7 +223,9 @@ function Ensure-DockerImage {
 function New-DockerRunArgs {
     param(
         $Context,
-        [switch]$ExposeLoginPort
+        [switch]$ExposeLoginPort,
+        [string[]]$AdditionalArgs,
+        [string[]]$AdditionalEnv
     )
 
     $args = @()
@@ -232,6 +240,14 @@ function New-DockerRunArgs {
             '-e', 'ENABLE_OSS_BRIDGE=1'
         )
     }
+    if ($AdditionalEnv) {
+        foreach ($envPair in $AdditionalEnv) {
+            $args += @('-e', $envPair)
+        }
+    }
+    if ($AdditionalArgs) {
+        $args += $AdditionalArgs
+    }
     $args += $Context.Tag
     $args += '/usr/local/bin/codex_entry.sh'
     return $args
@@ -241,10 +257,12 @@ function Invoke-CodexContainer {
     param(
         $Context,
         [string[]]$CommandArgs,
-        [switch]$ExposeLoginPort
+        [switch]$ExposeLoginPort,
+        [string[]]$AdditionalArgs,
+        [string[]]$AdditionalEnv
     )
 
-    $runArgs = New-DockerRunArgs -Context $Context -ExposeLoginPort:$ExposeLoginPort
+    $runArgs = New-DockerRunArgs -Context $Context -ExposeLoginPort:$ExposeLoginPort -AdditionalArgs $AdditionalArgs -AdditionalEnv $AdditionalEnv
     if ($CommandArgs) {
         $runArgs += $CommandArgs
     }
@@ -262,6 +280,117 @@ function ConvertTo-ShellScript {
     )
 
     return ($Commands -join '; ')
+}
+
+function Install-McpServers {
+    param(
+        $Context
+    )
+
+    $source = Join-Path $Context.CodexRoot 'MCP'
+    if (-not (Test-Path $source)) {
+        Write-Host "MCP source directory not found at $source; skipping MCP install." -ForegroundColor DarkGray
+        return
+    }
+
+    $files = Get-ChildItem -Path $source -Filter *.py -File | Sort-Object Name
+    if (-not $files) {
+        Write-Host "No MCP server scripts found under $source; skipping MCP install." -ForegroundColor DarkGray
+        return
+    }
+
+    $destination = Join-Path $Context.CodexHome 'mcp'
+    New-Item -ItemType Directory -Force -Path $destination | Out-Null
+    foreach ($file in $files) {
+        Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $destination $file.Name) -Force
+    }
+
+    $python = @"
+import sys
+from pathlib import Path
+import tomlkit
+
+config_path = Path("/opt/codex-home/.codex/config.toml")
+config_path.parent.mkdir(parents=True, exist_ok=True)
+if config_path.exists():
+    doc = tomlkit.parse(config_path.read_text(encoding="utf-8"))
+else:
+    doc = tomlkit.document()
+
+mcp_table = doc.get("mcp_servers")
+if mcp_table is None:
+    mcp_table = tomlkit.table()
+    doc["mcp_servers"] = mcp_table
+
+python_cmd = sys.argv[1]
+
+for filename in sys.argv[2:]:
+    name = Path(filename).stem
+    table = tomlkit.table()
+    table.add("command", python_cmd)
+    table.add("args", ["-u", f"/opt/codex-home/mcp/{filename}"])
+    mcp_table[name] = table
+
+config_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+"@
+    $mcpPython = '/opt/mcp-venv/bin/python3'
+    $commandArgs = @('/usr/bin/env', 'python3', '-c', $python, $mcpPython) + ($files | ForEach-Object { $_.Name })
+    Invoke-CodexContainer -Context $Context -CommandArgs $commandArgs
+
+    Write-Host "Installed $($files.Count) MCP server(s) into $destination" -ForegroundColor DarkGray
+}
+
+function Install-RunnerOnPath {
+    param(
+        $Context
+    )
+
+    $binDir = Join-Path $Context.CodexHome 'bin'
+    New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+
+    $runnerDest = Join-Path $binDir 'codex_container.ps1'
+    $repoScript = Join-Path $Context.CodexRoot 'scripts/codex_container.ps1'
+    $escapedRepoScript = $repoScript.Replace("'", "''")
+    $runnerContent = @"
+param(
+    [Parameter(ValueFromRemainingArguments = `$true)]
+    [object[]]`$RemainingArgs
+)
+
+& '$escapedRepoScript' @RemainingArgs
+"@
+    Set-Content -Path $runnerDest -Value $runnerContent -Encoding ASCII
+
+    $shimPath = Join-Path $binDir 'codex-container.cmd'
+    $shimContent = @"
+@echo off
+PowerShell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ""$runnerDest"" %*
+"@
+    Set-Content -Path $shimPath -Value $shimContent -Encoding ASCII
+
+    $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+    $pathEntries = @()
+    if ($userPath) {
+        $pathEntries = $userPath -split ';'
+    }
+    $hasEntry = $false
+    foreach ($entry in $pathEntries) {
+        if ($entry.TrimEnd('\') -ieq $binDir.TrimEnd('\')) {
+            $hasEntry = $true
+            break
+        }
+    }
+    if (-not $hasEntry) {
+        $newPath = if ($userPath) { "$userPath;$binDir" } else { $binDir }
+        [Environment]::SetEnvironmentVariable('PATH', $newPath, 'User')
+        Write-Host "Added $binDir to user PATH" -ForegroundColor DarkGray
+    }
+    if (-not (($env:PATH -split ';') | Where-Object { $_.TrimEnd('\') -ieq $binDir.TrimEnd('\') })) {
+        $env:PATH = if ($env:PATH) { "$env:PATH;$binDir" } else { $binDir }
+    }
+
+    Write-Host "Runner installed to $runnerDest" -ForegroundColor DarkGray
+    Write-Host "Launcher shim available at $shimPath" -ForegroundColor DarkGray
 }
 
 $script:CodexUpdateCompleted = $false
@@ -407,6 +536,44 @@ function Invoke-CodexShell {
     Invoke-CodexContainer -Context $Context -CommandArgs @('/bin/bash')
 }
 
+function Invoke-CodexServe {
+    param(
+        $Context,
+        [int]$Port,
+        [string]$BindHost,
+        [int]$TimeoutMs,
+        [string]$DefaultModel,
+        [string[]]$ExtraArgs
+    )
+
+    Ensure-CodexCli -Context $Context
+
+    if (-not $Port) {
+        $Port = 4000
+    }
+    if (-not $BindHost) {
+        $BindHost = '127.0.0.1'
+    }
+
+    $publish = if ($BindHost) { "${BindHost}:${Port}:${Port}" } else { "${Port}:${Port}" }
+
+    $envVars = @("CODEX_GATEWAY_PORT=$Port", 'CODEX_GATEWAY_BIND=0.0.0.0')
+    if ($TimeoutMs) {
+        $envVars += "CODEX_GATEWAY_TIMEOUT_MS=$TimeoutMs"
+    }
+    if ($DefaultModel) {
+        $envVars += "CODEX_GATEWAY_DEFAULT_MODEL=$DefaultModel"
+    }
+    if ($ExtraArgs) {
+        $joined = [string]::Join(' ', $ExtraArgs)
+        if ($joined.Trim().Length -gt 0) {
+            $envVars += "CODEX_GATEWAY_EXTRA_ARGS=$joined"
+        }
+    }
+
+    Invoke-CodexContainer -Context $Context -CommandArgs @('node', '/usr/local/bin/codex_gateway.js') -AdditionalArgs @('-p', $publish) -AdditionalEnv $envVars
+}
+
 function Test-CodexAuthenticated {
     param(
         $Context
@@ -457,13 +624,14 @@ if ($Login) { $actions += 'Login' }
 if ($Shell) { $actions += 'Shell' }
 if ($Exec) { $actions += 'Exec' }
 if ($Run) { $actions += 'Run' }
+if ($Serve) { $actions += 'Serve' }
 
 if (-not $actions) {
     $actions = @('Run')
 }
 
 if ($actions.Count -gt 1) {
-    throw "Specify only one primary action (choose one of -Install, -Login, -Run, -Exec, -Shell)."
+    throw "Specify only one primary action (choose one of -Install, -Login, -Run, -Exec, -Shell, -Serve)."
 }
 
 $action = $actions[0]
@@ -496,6 +664,8 @@ switch ($action) {
     'Install' {
         Invoke-DockerBuild -Context $context -PushImage:$Push
         Ensure-CodexCli -Context $context -Force
+        Install-McpServers -Context $context
+        Install-RunnerOnPath -Context $context
     }
     'Login' {
         Invoke-CodexLogin -Context $context
@@ -506,6 +676,10 @@ switch ($action) {
     'Exec' {
         Ensure-CodexAuthentication -Context $context -Silent:($Json -or $JsonE)
         Invoke-CodexExec -Context $context -Arguments $Exec
+    }
+    'Serve' {
+        Ensure-CodexAuthentication -Context $context
+        Invoke-CodexServe -Context $context -Port $GatewayPort -BindHost $GatewayHost -TimeoutMs $GatewayTimeoutMs -DefaultModel $GatewayDefaultModel -ExtraArgs $GatewayExtraArgs
     }
     default { # Run
         Ensure-CodexAuthentication -Context $context -Silent:($Json -or $JsonE)
