@@ -83,6 +83,33 @@ Typical example:
 ```
 The directory passed via `--workspace`—or, if omitted, the directory you were in when you invoked the script—is what gets mounted into `/workspace` for *all* actions (install, login, run, etc.).
 
+### Run the local HTTP gateway
+
+To expose Codex as a lightweight chat-completions service on your machine:
+
+```bash
+./scripts/codex_container.sh --serve --gateway-port 4000
+```
+PowerShell equivalent:
+
+```powershell
+./scripts/codex_container.ps1 -Serve -GatewayPort 4000
+```
+
+- The script mounts your current directory at `/workspace`, so Codex tools can operate on the same files Webwright sees.
+- `--gateway-port` controls the host/container port (defaults to `4000`). `--gateway-host` lets you bind to a specific host interface (default `127.0.0.1`).
+- The container listens for POST requests at `/completion` and exposes a simple health probe at `/health`.
+
+Set any of the following environment variables before invoking `--serve` to tweak behaviour:
+
+| Variable | Purpose |
+| --- | --- |
+| `CODEX_GATEWAY_DEFAULT_MODEL` | Force a specific Codex model (falls back to Codex defaults when unset). |
+| `CODEX_GATEWAY_TIMEOUT_MS` | Override the default 120s request timeout. |
+| `CODEX_GATEWAY_EXTRA_ARGS` | Extra flags forwarded to `codex exec` (space-delimited). |
+
+Stop the gateway with `Ctrl+C`; the container exits when the process ends.
+
 ## Cleanup Helpers
 
 To wipe Codex state quickly:

@@ -14,6 +14,10 @@ OSS_MODEL=""
 declare -a CODEX_ARGS=()
 declare -a EXEC_ARGS=()
 declare -a POSITIONAL_ARGS=()
+GATEWAY_PORT_OVERRIDE=""
+GATEWAY_HOST_OVERRIDE=""
+declare -a DOCKER_RUN_EXTRA_ARGS=()
+declare -a DOCKER_RUN_EXTRA_ENVS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -55,6 +59,14 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       ACTION="shell"
+      shift
+      ;;
+    --serve)
+      if [[ -n "$ACTION" && "$ACTION" != "serve" ]]; then
+        echo "Error: multiple actions specified" >&2
+        exit 1
+      fi
+      ACTION="serve"
       shift
       ;;
     --push)
@@ -132,6 +144,24 @@ while [[ $# -gt 0 ]]; do
       ;;
     --oss)
       USE_OSS=true
+      shift
+      ;;
+    --gateway-port)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Error: --gateway-port requires a value" >&2
+        exit 1
+      fi
+      GATEWAY_PORT_OVERRIDE="$1"
+      shift
+      ;;
+    --gateway-host)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Error: --gateway-host requires a value" >&2
+        exit 1
+      fi
+      GATEWAY_HOST_OVERRIDE="$1"
       shift
       ;;
     --model)
@@ -334,6 +364,14 @@ docker_run() {
   if [[ "$USE_OSS" == true ]]; then
     args+=(-e OLLAMA_HOST=http://host.docker.internal:11434 -e OSS_SERVER_URL=http://host.docker.internal:11434 -e ENABLE_OSS_BRIDGE=1)
   fi
+  if [[ ${#DOCKER_RUN_EXTRA_ENVS[@]} -gt 0 ]]; then
+    for env_kv in "${DOCKER_RUN_EXTRA_ENVS[@]}"; do
+      args+=(-e "$env_kv")
+    done
+  fi
+  if [[ ${#DOCKER_RUN_EXTRA_ARGS[@]} -gt 0 ]]; then
+    args+=("${DOCKER_RUN_EXTRA_ARGS[@]}")
+  fi
   args+=("${TAG}" /usr/local/bin/codex_entry.sh)
   args+=("$@")
   if [[ -n "${CODEX_CONTAINER_TRACE:-}" ]]; then
@@ -343,6 +381,117 @@ docker_run() {
   fi
   docker "${args[@]}"
 }
+
+install_mcp_servers() {
+  local mcp_source="${CODEX_ROOT}/MCP"
+  if [[ ! -d "$mcp_source" ]]; then
+    echo "MCP source directory not found at ${mcp_source}; skipping MCP install." >&2
+    return
+  fi
+
+  local -a files_raw=()
+  while IFS= read -r -d '' file; do
+    files_raw+=("$file")
+  done < <(find "$mcp_source" -maxdepth 1 -type f -name '*.py' -print0)
+
+  if [[ ${#files_raw[@]} -eq 0 ]]; then
+    echo "No MCP server scripts found under ${mcp_source}; skipping MCP install." >&2
+    return
+  fi
+
+  local dest="${CODEX_HOME}/mcp"
+  mkdir -p "$dest"
+
+  local IFS=$'\n'
+  # shellcheck disable=SC2207
+  local -a files_sorted=($(printf '%s\n' "${files_raw[@]}" | sort))
+  IFS=$' \t\n'
+
+  local -a basenames=()
+  local copied=0
+  for src in "${files_sorted[@]}"; do
+    local base
+    base="$(basename "$src")"
+    install -m 0644 "$src" "${dest}/${base}"
+    basenames+=("$base")
+    ((copied++))
+  done
+
+  local mcp_python="/opt/mcp-venv/bin/python3"
+  local py_script
+  read -r -d '' py_script <<'PYCFG'
+import sys
+from pathlib import Path
+import tomlkit
+
+config_path = Path("/opt/codex-home/.codex/config.toml")
+config_path.parent.mkdir(parents=True, exist_ok=True)
+if config_path.exists():
+    doc = tomlkit.parse(config_path.read_text(encoding="utf-8"))
+else:
+    doc = tomlkit.document()
+
+mcp_table = doc.get("mcp_servers")
+if mcp_table is None:
+    mcp_table = tomlkit.table()
+    doc["mcp_servers"] = mcp_table
+
+python_cmd = sys.argv[1]
+
+for filename in sys.argv[2:]:
+    name = Path(filename).stem
+    table = tomlkit.table()
+    table.add("command", python_cmd)
+    table.add("args", ["-u", f"/opt/codex-home/mcp/{filename}"])
+    mcp_table[name] = table
+
+config_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+PYCFG
+
+  docker_run --quiet /usr/bin/env python3 -c "$py_script" "$mcp_python" "${basenames[@]}"
+  echo "Installed ${copied} MCP server(s) into ${dest}" >&2
+}
+
+install_runner_on_path() {
+  local dest_dir
+  if [[ -n "${XDG_BIN_HOME:-}" ]]; then
+    dest_dir="${XDG_BIN_HOME}"
+  else
+    dest_dir="${HOME}/.local/bin"
+  fi
+
+  if [[ -z "$dest_dir" ]]; then
+    echo "Unable to resolve destination for runner install; skipping PATH helper." >&2
+    return
+  fi
+
+  mkdir -p "$dest_dir"
+  local dest="${dest_dir}/codex-container"
+
+  cat >"$dest" <<EOF
+#!/usr/bin/env bash
+exec "${CODEX_ROOT}/scripts/codex_container.sh" "\$@"
+EOF
+  chmod 0755 "$dest"
+
+  local on_path=0
+  local path_entry
+  IFS=':' read -r -a path_entries <<<"${PATH}"
+  for path_entry in "${path_entries[@]}"; do
+    if [[ "$path_entry" == "$dest_dir" ]]; then
+      on_path=1
+      break
+    fi
+  done
+
+  if [[ $on_path -eq 0 ]]; then
+    echo "Runner installed to ${dest}. Add ${dest_dir} to PATH to invoke 'codex-container'." >&2
+  else
+    echo "Runner installed to ${dest} and available on PATH." >&2
+  fi
+}
+
+
 
 CODEX_UPDATE_DONE=0
 
@@ -529,6 +678,37 @@ invoke_codex_exec() {
   fi
 }
 
+invoke_codex_server() {
+  ensure_codex_cli 0 0
+  local port="${GATEWAY_PORT_OVERRIDE:-${CODEX_GATEWAY_PORT:-4000}}"
+  local host="${GATEWAY_HOST_OVERRIDE:-${CODEX_GATEWAY_HOST:-127.0.0.1}}"
+
+  if ! [[ "$port" =~ ^[0-9]+$ ]]; then
+    echo "Error: gateway port '$port' is not numeric." >&2
+    exit 1
+  fi
+
+  local -a prev_extra_args=("${DOCKER_RUN_EXTRA_ARGS[@]}")
+  local -a prev_extra_envs=("${DOCKER_RUN_EXTRA_ENVS[@]}")
+
+  DOCKER_RUN_EXTRA_ARGS=(-p "${host}:${port}:${port}")
+  DOCKER_RUN_EXTRA_ENVS=("CODEX_GATEWAY_PORT=${port}" "CODEX_GATEWAY_BIND=0.0.0.0")
+  if [[ -n "${CODEX_GATEWAY_TIMEOUT_MS:-}" ]]; then
+    DOCKER_RUN_EXTRA_ENVS+=("CODEX_GATEWAY_TIMEOUT_MS=${CODEX_GATEWAY_TIMEOUT_MS}")
+  fi
+  if [[ -n "${CODEX_GATEWAY_DEFAULT_MODEL:-}" ]]; then
+    DOCKER_RUN_EXTRA_ENVS+=("CODEX_GATEWAY_DEFAULT_MODEL=${CODEX_GATEWAY_DEFAULT_MODEL}")
+  fi
+  if [[ -n "${CODEX_GATEWAY_EXTRA_ARGS:-}" ]]; then
+    DOCKER_RUN_EXTRA_ENVS+=("CODEX_GATEWAY_EXTRA_ARGS=${CODEX_GATEWAY_EXTRA_ARGS}")
+  fi
+
+  docker_run node /usr/local/bin/codex_gateway.js
+
+  DOCKER_RUN_EXTRA_ARGS=("${prev_extra_args[@]}")
+  DOCKER_RUN_EXTRA_ENVS=("${prev_extra_envs[@]}")
+}
+
 invoke_codex_shell() {
   ensure_codex_cli
   docker_run /bin/bash
@@ -555,6 +735,8 @@ case "$ACTION" in
   install)
     docker_build_image
     ensure_codex_cli 1
+    install_mcp_servers
+    install_runner_on_path
     ;;
   login)
     invoke_codex_login
@@ -566,6 +748,10 @@ case "$ACTION" in
   exec)
     ensure_codex_auth "$JSON_OUTPUT"
     invoke_codex_exec "$JSON_OUTPUT"
+    ;;
+  serve)
+    ensure_codex_auth 0
+    invoke_codex_server
     ;;
   run|*)
     ensure_codex_auth "$JSON_OUTPUT"
