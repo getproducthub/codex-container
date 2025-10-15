@@ -91,5 +91,18 @@ COPY scripts/codex_gateway.js /usr/local/bin/
 RUN sed -i 's/\r$//' /usr/local/bin/codex_gateway.js \
   && chmod 555 /usr/local/bin/codex_gateway.js
 
+# Copy MCP source files into the image
+COPY MCP/ /opt/mcp-source/
+
+# Copy MCP installation script and helper
+COPY scripts/install_mcp_servers.sh /opt/
+COPY scripts/update_mcp_config.py /opt/codex-home/.codex/
+RUN sed -i 's/\r$//' /opt/install_mcp_servers.sh \
+  && chmod 555 /opt/install_mcp_servers.sh \
+  && chmod 644 /opt/codex-home/.codex/update_mcp_config.py
+
+# Install MCP servers during build
+RUN /opt/install_mcp_servers.sh
+
 # Default to running as root so bind mounts succeed on Windows drives with restrictive ACLs.
 USER root

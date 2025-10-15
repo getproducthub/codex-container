@@ -169,6 +169,17 @@ function Invoke-DockerBuild {
     Write-Host "  Dockerfile: $dockerfilePath" -ForegroundColor DarkGray
     Write-Host "  Tag:        $($Context.Tag)" -ForegroundColor DarkGray
 
+    $logDir = Join-Path $Context.CodexHome 'logs'
+    if (-not (Test-Path $logDir)) {
+        New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+    }
+    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $logFile = Join-Path $logDir "build-$timestamp.log"
+    if (-not (Test-Path $logFile)) {
+        New-Item -ItemType File -Path $logFile -Force | Out-Null
+    }
+    Write-Host "  Log file:   $logFile" -ForegroundColor DarkGray
+
     $buildArgs = @(
         'build',
         '-f', (Resolve-Path $dockerfilePath),
@@ -176,21 +187,31 @@ function Invoke-DockerBuild {
         (Resolve-Path $Context.CodexRoot)
     )
 
-    docker @buildArgs
+    $buildCommand = "docker $($buildArgs -join ' ')"
+    Write-Host "[build] $buildCommand" -ForegroundColor DarkGray
+    Add-Content -Path $logFile -Value "[build] $buildCommand" -Encoding UTF8
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "docker build failed with exit code $LASTEXITCODE"
+    docker @buildArgs 2>&1 | Tee-Object -FilePath $logFile -Append
+    $buildExitCode = $LASTEXITCODE
+
+    if ($buildExitCode -ne 0) {
+        throw "docker build failed with exit code $buildExitCode. See $logFile for details."
     }
 
     if ($PushImage) {
         Write-Host "Pushing image $($Context.Tag)" -ForegroundColor Cyan
-        docker push $Context.Tag
-        if ($LASTEXITCODE -ne 0) {
-            throw "docker push failed with exit code $LASTEXITCODE"
+        $pushCommand = "docker push $($Context.Tag)"
+        Write-Host "[build] $pushCommand" -ForegroundColor DarkGray
+        Add-Content -Path $logFile -Value "[build] $pushCommand" -Encoding UTF8
+        docker push $Context.Tag 2>&1 | Tee-Object -FilePath $logFile -Append
+        $pushExitCode = $LASTEXITCODE
+        if ($pushExitCode -ne 0) {
+            throw "docker push failed with exit code $pushExitCode. See $logFile for details."
         }
     }
 
     Write-Host 'Build complete.' -ForegroundColor Green
+    Write-Host "Build log saved to $logFile" -ForegroundColor DarkGray
 }
 
 function Test-DockerImageExists {
@@ -284,54 +305,6 @@ function ConvertTo-ShellScript {
     )
 
     return ($Commands -join '; ')
-}
-
-function Install-McpServers {
-    param(
-        $Context
-    )
-
-    $source = Join-Path $Context.CodexRoot 'MCP'
-    if (-not (Test-Path $source)) {
-        Write-Host "MCP source directory not found at $source; skipping MCP install." -ForegroundColor DarkGray
-        return
-    }
-
-    $files = Get-ChildItem -Path $source -Filter *.py -File | Sort-Object Name
-    if (-not $files) {
-        Write-Host "No MCP server scripts found under $source; skipping MCP install." -ForegroundColor DarkGray
-        return
-    }
-
-    $destination = Join-Path $Context.CodexHome 'mcp'
-    New-Item -ItemType Directory -Force -Path $destination | Out-Null
-    foreach ($file in $files) {
-        Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $destination $file.Name) -Force
-    }
-
-    $mcpPython = '/opt/mcp-venv/bin/python3'
-    $helperSource = Join-Path $Context.CodexRoot 'scripts/update_mcp_config.py'
-    $helperDir = Join-Path $Context.CodexHome '.codex'
-    $helperTarget = Join-Path $helperDir 'update_mcp_config.py'
-
-    if (-not (Test-Path $helperSource)) {
-        throw "Helper script missing at $helperSource"
-    }
-
-    New-Item -ItemType Directory -Force -Path $helperDir | Out-Null
-    Copy-Item -LiteralPath $helperSource -Destination $helperTarget -Force
-
-    $commandArgs = @(
-        '/usr/bin/env',
-        'python3',
-        '/opt/codex-home/.codex/update_mcp_config.py',
-        '/opt/codex-home/.codex/config.toml',
-        $mcpPython
-    ) + ($files | ForEach-Object { $_.Name })
-
-    Invoke-CodexContainer -Context $Context -CommandArgs $commandArgs
-
-    Write-Host "Installed $($files.Count) MCP server(s) into $destination" -ForegroundColor DarkGray
 }
 
 function Install-RunnerOnPath {
@@ -658,7 +631,6 @@ switch ($action) {
     'Install' {
         Invoke-DockerBuild -Context $context -PushImage:$Push
         Ensure-CodexCli -Context $context -Force
-        Install-McpServers -Context $context
         Install-RunnerOnPath -Context $context
     }
     'Login' {
