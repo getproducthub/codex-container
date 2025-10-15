@@ -418,37 +418,21 @@ install_mcp_servers() {
   done
 
   local mcp_python="/opt/mcp-venv/bin/python3"
-  local py_script
-  read -r -d '' py_script <<'PYCFG'
-import sys
-from pathlib import Path
-import tomlkit
+  local helper_source="${CODEX_ROOT}/scripts/update_mcp_config.py"
+  local helper_target_dir="${CODEX_HOME}/.codex"
+  local helper_target="${helper_target_dir}/update_mcp_config.py"
 
-config_path = Path("/opt/codex-home/.codex/config.toml")
-config_path.parent.mkdir(parents=True, exist_ok=True)
-if config_path.exists():
-    doc = tomlkit.parse(config_path.read_text(encoding="utf-8"))
-else:
-    doc = tomlkit.document()
+  mkdir -p "$helper_target_dir"
+  if [[ ! -f "$helper_source" ]]; then
+    echo "Error: helper script missing at ${helper_source}" >&2
+    return 1
+  fi
 
-mcp_table = doc.get("mcp_servers")
-if mcp_table is None:
-    mcp_table = tomlkit.table()
-    doc["mcp_servers"] = mcp_table
+  install -m 0644 "$helper_source" "$helper_target"
 
-python_cmd = sys.argv[1]
-
-for filename in sys.argv[2:]:
-    name = Path(filename).stem
-    table = tomlkit.table()
-    table.add("command", python_cmd)
-    table.add("args", ["-u", f"/opt/codex-home/mcp/{filename}"])
-    mcp_table[name] = table
-
-config_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
-PYCFG
-
-  docker_run --quiet /usr/bin/env python3 -c "$py_script" "$mcp_python" "${basenames[@]}"
+  docker_run --quiet /usr/bin/env python3 \
+    "/opt/codex-home/.codex/update_mcp_config.py" \
+    "/opt/codex-home/.codex/config.toml" "$mcp_python" "${basenames[@]}"
   echo "Installed ${copied} MCP server(s) into ${dest}" >&2
 }
 
