@@ -272,6 +272,10 @@ function Invoke-CodexContainer {
     }
 
     docker @runArgs
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "docker run exited with code $exitCode"
+    }
 }
 
 function ConvertTo-ShellScript {
@@ -305,36 +309,26 @@ function Install-McpServers {
         Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $destination $file.Name) -Force
     }
 
-    $python = @"
-import sys
-from pathlib import Path
-import tomlkit
-
-config_path = Path("/opt/codex-home/.codex/config.toml")
-config_path.parent.mkdir(parents=True, exist_ok=True)
-if config_path.exists():
-    doc = tomlkit.parse(config_path.read_text(encoding="utf-8"))
-else:
-    doc = tomlkit.document()
-
-mcp_table = doc.get("mcp_servers")
-if mcp_table is None:
-    mcp_table = tomlkit.table()
-    doc["mcp_servers"] = mcp_table
-
-python_cmd = sys.argv[1]
-
-for filename in sys.argv[2:]:
-    name = Path(filename).stem
-    table = tomlkit.table()
-    table.add("command", python_cmd)
-    table.add("args", ["-u", f"/opt/codex-home/mcp/{filename}"])
-    mcp_table[name] = table
-
-config_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
-"@
     $mcpPython = '/opt/mcp-venv/bin/python3'
-    $commandArgs = @('/usr/bin/env', 'python3', '-c', $python, $mcpPython) + ($files | ForEach-Object { $_.Name })
+    $helperSource = Join-Path $Context.CodexRoot 'scripts/update_mcp_config.py'
+    $helperDir = Join-Path $Context.CodexHome '.codex'
+    $helperTarget = Join-Path $helperDir 'update_mcp_config.py'
+
+    if (-not (Test-Path $helperSource)) {
+        throw "Helper script missing at $helperSource"
+    }
+
+    New-Item -ItemType Directory -Force -Path $helperDir | Out-Null
+    Copy-Item -LiteralPath $helperSource -Destination $helperTarget -Force
+
+    $commandArgs = @(
+        '/usr/bin/env',
+        'python3',
+        '/opt/codex-home/.codex/update_mcp_config.py',
+        '/opt/codex-home/.codex/config.toml',
+        $mcpPython
+    ) + ($files | ForEach-Object { $_.Name })
+
     Invoke-CodexContainer -Context $Context -CommandArgs $commandArgs
 
     Write-Host "Installed $($files.Count) MCP server(s) into $destination" -ForegroundColor DarkGray
