@@ -387,79 +387,6 @@ docker_run() {
   docker "${args[@]}"
 }
 
-install_mcp_servers() {
-  local mcp_source="${CODEX_ROOT}/MCP"
-  if [[ ! -d "$mcp_source" ]]; then
-    echo "MCP source directory not found at ${mcp_source}; skipping MCP install." >&2
-    return
-  fi
-
-  local nullglob_state
-  # Use POSIX globbing so macOS users without GNU find can install MCP servers.
-  nullglob_state=$(shopt -p nullglob || true)
-  shopt -s nullglob
-  local -a files_raw=("${mcp_source}"/*.py)
-  if [[ -n "$nullglob_state" ]]; then
-    eval "$nullglob_state"
-  else
-    shopt -u nullglob
-  fi
-
-  if [[ ${#files_raw[@]} -eq 0 ]]; then
-    echo "No MCP server scripts found under ${mcp_source}; skipping MCP install." >&2
-    return
-  fi
-
-  local -a filtered=()
-  local src_path
-  for src_path in "${files_raw[@]}"; do
-    if [[ -f "$src_path" ]]; then
-      filtered+=("$src_path")
-    fi
-  done
-  files_raw=("${filtered[@]}")
-
-  if [[ ${#files_raw[@]} -eq 0 ]]; then
-    echo "No MCP server scripts found under ${mcp_source}; skipping MCP install." >&2
-    return
-  fi
-
-  local dest="${CODEX_HOME}/mcp"
-  mkdir -p "$dest"
-
-  local IFS=$'\n'
-  # shellcheck disable=SC2207
-  local -a files_sorted=($(printf '%s\n' "${files_raw[@]}" | sort))
-  IFS=$' \t\n'
-
-  local -a basenames=()
-  local copied=0
-  for src in "${files_sorted[@]}"; do
-    local base
-    base="$(basename "$src")"
-    install -m 0644 "$src" "${dest}/${base}"
-    basenames+=("$base")
-    ((copied++))
-  done
-
-  local mcp_python="/opt/mcp-venv/bin/python3"
-  local helper_source="${CODEX_ROOT}/scripts/update_mcp_config.py"
-  local helper_target_dir="${CODEX_HOME}/.codex"
-  local helper_target="${helper_target_dir}/update_mcp_config.py"
-
-  mkdir -p "$helper_target_dir"
-  if [[ ! -f "$helper_source" ]]; then
-    echo "Error: helper script missing at ${helper_source}" >&2
-    return 1
-  fi
-
-  install -m 0644 "$helper_source" "$helper_target"
-
-  docker_run --quiet /usr/bin/env python3 \
-    "/opt/codex-home/.codex/update_mcp_config.py" \
-    "/opt/codex-home/.codex/config.toml" "$mcp_python" "${basenames[@]}"
-  echo "Installed ${copied} MCP server(s) into ${dest}" >&2
-}
 
 install_runner_on_path() {
   local dest_dir
@@ -732,23 +659,43 @@ docker_build_image() {
   echo "Building Codex service image" >&2
   echo "  Dockerfile: ${CODEX_ROOT}/Dockerfile" >&2
   echo "  Tag:        ${TAG}" >&2
+  local log_dir="${CODEX_HOME}/logs"
+  mkdir -p "$log_dir"
+  local timestamp
+  timestamp="$(date +%Y%m%d-%H%M%S)"
+  local build_log="${log_dir}/build-${timestamp}.log"
+  echo "  Log file:   ${build_log}" >&2
   local -a build_args=(-f "${CODEX_ROOT}/Dockerfile" -t "${TAG}" "${CODEX_ROOT}")
   if [[ "$NO_CACHE" == true ]]; then
     build_args=(--no-cache "${build_args[@]}")
   fi
-  docker build "${build_args[@]}"
+  if ! {
+    echo "[build] docker build ${build_args[*]}"
+    docker build "${build_args[@]}"
+  } 2>&1 | tee "$build_log"; then
+    local build_status=${PIPESTATUS[0]}
+    echo "Build failed. See ${build_log} for details." >&2
+    exit $build_status
+  fi
   if [[ "$PUSH_IMAGE" == true ]]; then
     echo "Pushing image ${TAG}" >&2
-    docker push "${TAG}"
+    if ! {
+      echo "[build] docker push ${TAG}"
+      docker push "${TAG}"
+    } 2>&1 | tee -a "$build_log"; then
+      local push_status=${PIPESTATUS[0]}
+      echo "Push failed. See ${build_log} for details." >&2
+      exit $push_status
+    fi
   fi
   echo "Build complete." >&2
+  echo "Build log saved to ${build_log}" >&2
 }
 
 case "$ACTION" in
   install)
     docker_build_image
     ensure_codex_cli 1
-    install_mcp_servers
     install_runner_on_path
     ;;
   login)

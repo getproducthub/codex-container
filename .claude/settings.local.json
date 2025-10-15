@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -rf /Users/kord/Code/deepbluedynamics/codex-container/scripts/.codex_container.sh_versions /Users/kord/Code/deepbluedynamics/codex-container/scripts/.codex_container.ps1_versions)",
+      "Bash(chmod +x /Users/kord/Code/deepbluedynamics/codex-container/scripts/install_mcp_servers.sh)",
+      "Read(//Users/kord/.codex-service/logs/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
