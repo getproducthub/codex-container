@@ -11,6 +11,7 @@ JSON_MODE="none"
 CODEX_HOME_OVERRIDE=""
 USE_OSS=false
 OSS_MODEL=""
+NO_CACHE=false
 declare -a CODEX_ARGS=()
 declare -a EXEC_ARGS=()
 declare -a POSITIONAL_ARGS=()
@@ -144,6 +145,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --oss)
       USE_OSS=true
+      shift
+      ;;
+    --no-cache)
+      NO_CACHE=true
       shift
       ;;
     --gateway-port)
@@ -389,10 +394,30 @@ install_mcp_servers() {
     return
   fi
 
-  local -a files_raw=()
-  while IFS= read -r -d '' file; do
-    files_raw+=("$file")
-  done < <(find "$mcp_source" -maxdepth 1 -type f -name '*.py' -print0)
+  local nullglob_state
+  # Use POSIX globbing so macOS users without GNU find can install MCP servers.
+  nullglob_state=$(shopt -p nullglob || true)
+  shopt -s nullglob
+  local -a files_raw=("${mcp_source}"/*.py)
+  if [[ -n "$nullglob_state" ]]; then
+    eval "$nullglob_state"
+  else
+    shopt -u nullglob
+  fi
+
+  if [[ ${#files_raw[@]} -eq 0 ]]; then
+    echo "No MCP server scripts found under ${mcp_source}; skipping MCP install." >&2
+    return
+  fi
+
+  local -a filtered=()
+  local src_path
+  for src_path in "${files_raw[@]}"; do
+    if [[ -f "$src_path" ]]; then
+      filtered+=("$src_path")
+    fi
+  done
+  files_raw=("${filtered[@]}")
 
   if [[ ${#files_raw[@]} -eq 0 ]]; then
     echo "No MCP server scripts found under ${mcp_source}; skipping MCP install." >&2
@@ -707,7 +732,11 @@ docker_build_image() {
   echo "Building Codex service image" >&2
   echo "  Dockerfile: ${CODEX_ROOT}/Dockerfile" >&2
   echo "  Tag:        ${TAG}" >&2
-  docker build -f "${CODEX_ROOT}/Dockerfile" -t "${TAG}" "${CODEX_ROOT}"
+  local -a build_args=(-f "${CODEX_ROOT}/Dockerfile" -t "${TAG}" "${CODEX_ROOT}")
+  if [[ "$NO_CACHE" == true ]]; then
+    build_args=(--no-cache "${build_args[@]}")
+  fi
+  docker build "${build_args[@]}"
   if [[ "$PUSH_IMAGE" == true ]]; then
     echo "Pushing image ${TAG}" >&2
     docker push "${TAG}"
